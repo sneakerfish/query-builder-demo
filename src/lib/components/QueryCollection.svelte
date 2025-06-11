@@ -1,5 +1,5 @@
 <script lang="ts" context="module">
-  import type { QueryCondition } from './QueryPills.svelte';
+  import type { Query } from './Query.svelte';
 
   export interface Query {
     id: string;
@@ -12,7 +12,7 @@
 
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import QueryPills from './QueryPills.svelte';
+  import Query from './Query.svelte';
 
   const dispatch = createEventDispatcher<{
     queryUpdate: Query;
@@ -26,15 +26,10 @@
   let showNewQueryModal = false;
   let newQueryName = '';
 
-  function handleQueryUpdate(event: CustomEvent<QueryCondition[]>) {
-    if (!currentQueryId) return;
-    
-    const updatedQuery = queries.find(q => q.id === currentQueryId);
-    if (!updatedQuery) return;
-
-    const newQuery = { ...updatedQuery, conditions: event.detail };
-    queries = queries.map(q => q.id === currentQueryId ? newQuery : q);
-    dispatch('queryUpdate', newQuery);
+  function handleQueryUpdate(event: CustomEvent<Query>) {
+    const updatedQuery = event.detail;
+    queries = queries.map(q => q.id === updatedQuery.id ? updatedQuery : q);
+    dispatch('queryUpdate', updatedQuery);
   }
 
   function createNewQuery() {
@@ -55,20 +50,8 @@
     showNewQueryModal = false;
   }
 
-  function executeQuery() {
-    if (!currentQueryId) return;
-    
-    const updatedQuery = queries.find(q => q.id === currentQueryId);
-    if (!updatedQuery) return;
-
-    const newQuery = {
-      ...updatedQuery,
-      lastExecuted: new Date(),
-      resultCount: Math.floor(Math.random() * 1000) // Simulated result count
-    };
-
-    queries = queries.map(q => q.id === currentQueryId ? newQuery : q);
-    dispatch('executeQuery', currentQueryId);
+  function handleExecuteQuery(event: CustomEvent<string>) {
+    dispatch('executeQuery', event.detail);
   }
 
   function setAsCurrent(queryId: string) {
@@ -96,34 +79,12 @@
   <div class="queries">
     {#if currentQueryId}
       {#each queries.filter(q => q.id === currentQueryId) as query (query.id)}
-        <div class="query-card current">
-          <div class="query-header">
-            <h3>{query.name}</h3>
-            <div class="query-actions">
-              <button class="execute" on:click={executeQuery}>
-                Execute
-              </button>
-            </div>
-          </div>
-
-          <QueryPills 
-            conditions={query.conditions} 
-            on:update={handleQueryUpdate}
-          />
-
-          <div class="query-footer">
-            {#if query.lastExecuted}
-              <span class="timestamp">
-                Last executed: {formatDate(query.lastExecuted)}
-              </span>
-            {/if}
-            {#if query.resultCount !== undefined}
-              <span class="results">
-                {query.resultCount.toLocaleString()} results
-              </span>
-            {/if}
-          </div>
-        </div>
+        <Query 
+          {query}
+          isCurrent={true}
+          on:queryUpdate={handleQueryUpdate}
+          on:executeQuery={handleExecuteQuery}
+        />
       {/each}
     {:else}
       <div class="no-current-query">
@@ -136,68 +97,13 @@
         <h3>Historical Queries</h3>
         <div class="query-grid">
           {#each queries.filter(q => q.id !== currentQueryId) as query (query.id)}
-            <div class="query-card historical">
-              <div class="query-header">
-                <h3>{query.name}</h3>
-                <div class="query-actions">
-                  <button class="set-current" on:click={() => setAsCurrent(query.id)}>
-                    Set as Current
-                  </button>
-                </div>
-              </div>
-
-              <div class="readonly-pills">
-                {#each query.conditions as condition (condition.id)}
-                  <div 
-                    class="pill" 
-                    class:boolean={condition.type === 'boolean'} 
-                    class:range={condition.type === 'range'} 
-                    class:companies={condition.type === 'companies'}
-                    role="button"
-                    tabindex="0"
-                    on:click={() => setAsCurrent(query.id)}
-                    on:keydown={(e) => e.key === 'Enter' && setAsCurrent(query.id)}
-                  >
-                    <div class="pill-content">
-                      <span class="label">{condition.label}</span>
-                      {#if condition.type === 'companies'}
-                        <div class="companies-list">
-                          {#each (condition.value as string[]).slice(0, 3) as company}
-                            <span class="company">{company}</span>
-                          {/each}
-                          {#if (condition.value as string[]).length > 3}
-                            <span class="more">+{(condition.value as string[]).length - 3} more</span>
-                          {/if}
-                        </div>
-                      {:else}
-                        <span class="value">
-                          {#if condition.type === 'boolean'}
-                            {condition.value ? 'Yes' : 'No'}
-                          {:else if condition.type === 'range'}
-                            {`${(condition.value as { min: number; max: number }).min.toLocaleString()} - ${(condition.value as { min: number; max: number }).max.toLocaleString()}`}
-                          {:else}
-                            {condition.value}
-                          {/if}
-                        </span>
-                      {/if}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-
-              <div class="query-footer">
-                {#if query.lastExecuted}
-                  <span class="timestamp">
-                    Last executed: {formatDate(query.lastExecuted)}
-                  </span>
-                {/if}
-                {#if query.resultCount !== undefined}
-                  <span class="results">
-                    {query.resultCount.toLocaleString()} results
-                  </span>
-                {/if}
-              </div>
-            </div>
+            <Query 
+              {query}
+              isCurrent={false}
+              on:queryUpdate={handleQueryUpdate}
+              on:executeQuery={handleExecuteQuery}
+              on:setCurrent={() => setAsCurrent(query.id)}
+            />
           {/each}
         </div>
       </div>
@@ -276,71 +182,6 @@
     gap: 1.5rem;
   }
 
-  .query-card {
-    background-color: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 0.5rem;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .query-card.current {
-    border-color: #3b82f6;
-  }
-
-  .query-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .query-header h3 {
-    margin: 0;
-    color: #1e293b;
-    font-size: 1.25rem;
-  }
-
-  .query-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .execute, .set-current {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 0.375rem;
-    cursor: pointer;
-    font-weight: 500;
-  }
-
-  .execute {
-    background-color: #3b82f6;
-    color: white;
-  }
-
-  .execute:hover {
-    background-color: #2563eb;
-  }
-
-  .set-current {
-    background-color: #f1f5f9;
-    color: #1e293b;
-  }
-
-  .set-current:hover {
-    background-color: #e2e8f0;
-  }
-
-  .query-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: #64748b;
-    font-size: 0.875rem;
-  }
-
   .historical-queries {
     display: flex;
     flex-direction: column;
@@ -357,95 +198,6 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 1rem;
-  }
-
-  .readonly-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    background-color: #f1f5f9;
-    border: 1px solid #e2e8f0;
-    border-radius: 9999px;
-    font-size: 0.875rem;
-    color: #1e293b;
-    cursor: pointer;
-  }
-
-  .pill:hover {
-    background-color: #e2e8f0;
-  }
-
-  .pill.boolean {
-    background-color: #f0fdf4;
-    border-color: #86efac;
-  }
-
-  .pill.range {
-    background-color: #eff6ff;
-    border-color: #93c5fd;
-  }
-
-  .pill.companies {
-    background-color: #faf5ff;
-    border-color: #d8b4fe;
-  }
-
-  .pill-content {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .label {
-    font-weight: 500;
-  }
-
-  .value {
-    color: #64748b;
-  }
-
-  .companies-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-  }
-
-  .company {
-    background-color: white;
-    padding: 0.125rem 0.375rem;
-    border-radius: 0.25rem;
-    font-size: 0.75rem;
-  }
-
-  .more {
-    color: #64748b;
-    font-size: 0.75rem;
-  }
-
-  .remove {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.25rem;
-    height: 1.25rem;
-    padding: 0;
-    background: none;
-    border: none;
-    color: #64748b;
-    cursor: pointer;
-    font-size: 1.25rem;
-    line-height: 1;
-  }
-
-  .remove:hover {
-    color: #ef4444;
   }
 
   .no-current-query {
